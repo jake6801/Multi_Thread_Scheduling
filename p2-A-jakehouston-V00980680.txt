@@ -1,0 +1,43 @@
+1. How many threads are you going to use? Specify the work that you intend each thread to perform 
+One thread for each train which will simulate the loading, waiting to cross, and crossing time of the trains, add themselves to the priority queues to be scheduled
+One dispatch/main thread that will read input file, create train objects, and manage the scheduling of train crossing so that only one train crosses the track at a time and upholds the rules of priority and starvation 
+
+2. Do the threads work independently? Or is there an overall controller thread?
+There will be a dispatcher thread which controls the scheduling of train threads across the main track so the train threads don't work independently
+
+3. How many mutexes are you going to use? Specify the operation that each mutex will guard
+3 mutexes will be used: one for each station that will guard the access to the priority queues of the two stations so there's no concurrent access and one for only allowing one train on the main track at a time to cross 
+
+4. Will the main thread be idle? If not, what will it be doing?
+The main thread will read the input file and create train threads, send signals to start the loading process of each train simultaneously, loop to check for loaded and ready trains, schedule the trains to cross based on priority criteria and starvation, signal the trains to cross once they have been chosen/scheduled, and exit once all trains have crossed
+The thread will however be idle when waiting for a train to cross the track
+
+5. How are you going to represent stations (collections of loaded trains ready to depart)? That is, what type of data structure will you use?
+A priority queue will be used for each station that will sort the trains based on firstly their priority from high to low, then their loading time from earliest to latest, then their train number from lowest to highest 
+
+6. How are you going to ensure that data structures in your program will not be modified concurrently? 
+Mutexes will be used to protect the access to shared resources like the station queues so that only one train can be adding itself to each queue at a time and the dispatcher won't be removing trains from the queue simultaneously. Additionally, the main track access will require a mutex so only one train may be crossing the track at a time and will be released once finished 
+
+7. How many convars are you going to use? For each convar: 
+- Describe the condition that the convar will represent
+  The train crossing convar will be used to ensure the track is empty and the crossing mutex has been obtained for a train to cross the main track and that the dispatcher has given the train permission to cross 
+- Which mutex is associated with the convar and why 
+  The crossing mutex will be associated with the train crossing convar to ensure that when a train is signaled to cross, no other trains can access the main track concurrently 
+- What operation should be performed once pthread_cond_wait() has been unblocked and reacquired
+  Once the train thread has been unblocked by the dispatchers signal and reacquires the crossing mutex, the train will cross the main track which is simulated by waiting the crossing time and then after crossing it will release the crossing mutex and signal back to the dispatcher that it has finished crossing 
+
+8. in 15 lines or less, briefly sketch the overall algorithm you will use. 
+Read input file, create train thread and object, train thread wait to load 
+Global signal sent to start loading trains, train threads start loading 
+Once train loaded, acquire station mutex, place in priority queue ordering trains first by priority then loading time then train number, release mutex 
+Train thread wait for signal from dispatcher to cross track and mutex to cross track 
+Dispatcher loops while not all trains have crossed
+    If the back to back counter is 2 or higher than regardless of priority signal the train at top of the opposite directions queue to cross if there is any and reset counter
+    Peek at top of queue train in each queue, whichever has higher priority will be signaled 
+    If the two trains on top of the queues have the same priority 
+        If in opposite direction, send the train going opposite direction of the last to cross or westbound has priority if none have crossed,
+    Otherwise send the one at the top of the queue (already accounting for trains in same direction by using a priority queue as this will account for the ones that have faster loading time and lower train number)
+    Increment counter of back to back direction crossing and note direction of crossing
+Signal chosen train to cross using crossing signal convar, acquire mutex, sleep for cross time, release mutex, signal back to dispatcher that track is crossed, exit thread
+Once all trains have crossed exit main thread
+
