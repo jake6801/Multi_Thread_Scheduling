@@ -27,17 +27,17 @@ Mutexes will be used to protect the access to shared resources like the station 
   Once the train thread has been unblocked by the dispatchers signal and reacquires the crossing mutex, the train will cross the main track which is simulated by waiting the crossing time and then after crossing it will release the crossing mutex and signal back to the dispatcher that it has finished crossing 
 
 8. in 15 lines or less, briefly sketch the overall algorithm you will use. 
-Read input file, create train thread and object, train thread wait to load 
-Global signal sent to start loading trains, train threads start loading 
-Once train loaded, acquire station mutex, place in priority queue ordering trains first by priority then loading time then train number, release mutex 
-Train thread wait for signal from dispatcher to cross track and mutex to cross track 
-Dispatcher loops while not all trains have crossed
-    If the back to back counter is 2 or higher than regardless of priority signal the train at top of the opposite directions queue to cross if there is any and reset counter
-    Peek at top of queue train in each queue, whichever has higher priority will be signaled 
-    If the two trains on top of the queues have the same priority 
-        If in opposite direction, send the train going opposite direction of the last to cross or westbound has priority if none have crossed,
-    Otherwise send the one at the top of the queue (already accounting for trains in same direction by using a priority queue as this will account for the ones that have faster loading time and lower train number)
-    Increment counter of back to back direction crossing and note direction of crossing
-Signal chosen train to cross using crossing signal convar, acquire mutex, sleep for cross time, release mutex, signal back to dispatcher that track is crossed, exit thread
-Once all trains have crossed exit main thread
+- Read input file, create train thread and object, train thread wait to load and set state to ready to load
+- Global signal sent to start loading trains, train threads start loading, set all states to loading
+- Once train loaded, acquire station mutex, place in priority queue ordering trains first by priority then loading time then train number, release mutex, set state to ready to cross
+- Train thread wait for signal from dispatcher to cross track and mutex to cross track
+- Dispatcher loops while not all trains have crossed and main track unlocked and empty
+  - If the back to back counter is 2 or higher than regardless of priority signal the train at top of the opposite directions queue to cross if there is any and reset counter
+  - Peek at top of queue train in each queue, whichever has higher priority will be signaled 
+  - If the two trains on top of the queues have the same priority 
+    - If in opposite directions, send the train going opposite direction of the last to cross or westbound has priority if none have crossed yet
+  - Otherwise send the one at the top of the queue (already accounting for trains in same direction by using a priority queue as this will account for the ones that have same priority, faster loading time and lower train number)
+  - Increment counter of back to back direction crossing and note direction of crossing
+- Signal chosen train to cross using crossing signal convar, set state to crossing, acquire mutex, sleep for cross time, release mutex, set state to crossed, signal back to dispatcher that track is crossed, exit thread
+- Once all trains have crossed exit main thread
 
