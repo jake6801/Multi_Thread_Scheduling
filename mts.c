@@ -73,21 +73,21 @@ void* train_thread_func(void *train) {
     *train_object->state = "loaded"; //! fix this?
 
     //TODO create priority queue and put train in queue (need to do mutex stuff)
-    *train_object->state = "ready";    
+    // *train_object->state = "ready";    
     //TODO signal to dispatcher that trains are ready? (need to do local convar stuff?)
 
     //TODO once received signal from dispatcher and mutex to cross, cross 
     // ... mutex and convar stuff 
-    struct timespec cross_time = { 0 };
-    clock_gettime(CLOCK_MONOTONIC, &cross_time);
-    *train_object->state = "crossing";
-    usleep(train_object->crossing_time * 1000000);
-    clock_gettime(CLOCK_MONOTONIC, &cross_time);
+    // struct timespec cross_time = { 0 };
+    // clock_gettime(CLOCK_MONOTONIC, &cross_time);
+    // *train_object->state = "crossing";
+    // usleep(train_object->crossing_time * 1000000);
+    // clock_gettime(CLOCK_MONOTONIC, &cross_time);
 
     //TODO signal back to dispatcher that train has crossed and exit
     // ... signal back to dispatcher
-    *train_object->state = "crossed";
-    pthread_exit(NULL);
+    // *train_object->state = "crossed";
+    // pthread_exit(NULL);
 }
 
 void start_trains() {
