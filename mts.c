@@ -16,7 +16,11 @@
 //! need to change these a bit from loading_train.c
 pthread_mutex_t start_timer;
 pthread_cond_t train_ready_to_load;
+int num_trains = 0;
+int ready_to_load_count = 0;
 bool ready_to_load = false; 
+pthread_mutex_t ready_to_load_count_mutex;
+pthread_cond_t all_ready_to_load;
 
 struct timespec start_time = { 0 };
 
@@ -41,6 +45,13 @@ double timespec_to_seconds(struct timespec *ts) {
 void* train_thread_func(void *train) {
     // size_t i = (intptr_t) t;
     struct train *train_object = (struct train *) train;
+
+    pthread_mutex_lock(&ready_to_load_count_mutex);
+    ready_to_load_count++;
+    if (ready_to_load_count == num_trains) {
+        pthread_cond_signal(&all_ready_to_load);
+    }
+    pthread_mutex_unlock(&ready_to_load_count_mutex);
 
     // wait until start signal given 
     pthread_mutex_lock(&start_timer);
@@ -70,7 +81,7 @@ void* train_thread_func(void *train) {
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
     printf("train %d finished loading at time %f (at simulation time %f)\n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
     
-    *train_object->state = "loaded"; //! fix this?
+    // *train_object->state = "loaded"; //! fix this?
 
     //TODO create priority queue and put train in queue (need to do mutex stuff)
     // *train_object->state = "ready";    
@@ -90,6 +101,7 @@ void* train_thread_func(void *train) {
     // pthread_exit(NULL);
 }
 
+// broadcast to start loading trains 
 void start_trains() {
     pthread_mutex_lock(&start_timer);
     ready_to_load = true; 
@@ -106,33 +118,33 @@ int main() {
     }
     
     struct train trains[5];
-    int count = 0;
+    // int count = 0;
     int num;
     char dir;
     float ltime;
     float ctime;
     // create the train objects and threads 
     while (fscanf(file, "%s %f %f", &dir, &ltime, &ctime) != EOF) {        
-        trains[count].train_no = count;
+        trains[num_trains].train_no = num_trains;
         if (isupper(dir)) {
-            strcpy(trains[count].priority, "high");
+            strcpy(trains[num_trains].priority, "high");
         } else {
-            strcpy(trains[count].priority, "low");
+            strcpy(trains[num_trains].priority, "low");
         }
         if (tolower(dir) == 'e') {
-            strcpy(trains[count].direction, "east");
+            strcpy(trains[num_trains].direction, "east");
         } else {
-            strcpy(trains[count].direction, "west");
+            strcpy(trains[num_trains].direction, "west");
         }
-        trains[count].loading_time = ltime / 10;
-        trains[count].crossing_time = ctime / 10;
-        strcpy(trains[count].state, "waiting");
+        trains[num_trains].loading_time = ltime / 10;
+        trains[num_trains].crossing_time = ctime / 10;
+        strcpy(trains[num_trains].state, "waiting");
 
-        count++;
+        num_trains++;
     }
 
     // trains 
-    pthread_t train_thread_ids[count];
+    pthread_t train_thread_ids[num_trains];
     //TODO could make an array of trains and instead of passing this i thing I can pass the train object at index i?
     
 
@@ -142,7 +154,7 @@ int main() {
 
     struct timespec create_time = { 0 };
     // create the thread for each train object
-    for (size_t i = 0; i < count; ++i) { //? should this be ++i or i++?
+    for (size_t i = 0; i < num_trains; ++i) { //? should this be ++i or i++?
         clock_gettime(CLOCK_MONOTONIC, &create_time);
         printf("Creating train %ld at time %f\n", i, timespec_to_seconds(&create_time));
         
@@ -152,8 +164,15 @@ int main() {
         }
         sleep(1); //? why do we need to simulate delay
     }    
-    // Note: dont sync broadcast this way 
-    sleep(1);
+
+    // use convar and mutex to wait for all trains to be ready to load 
+    pthread_mutex_lock(&ready_to_load_count_mutex);
+    while (ready_to_load_count != num_trains) {
+        pthread_cond_wait(&all_ready_to_load, &ready_to_load_count_mutex);
+    }
+    pthread_mutex_unlock(&ready_to_load_count_mutex);
+
+    
 
     // get start time 
     clock_gettime(CLOCK_MONOTONIC, &start_time);
@@ -162,7 +181,7 @@ int main() {
     // start trains loading 
     start_trains();
 
-    for(size_t i = 0; i < count; ++i) {
+    for(size_t i = 0; i < num_trains; ++i) {
         pthread_join(train_thread_ids[i], NULL);
     }
 
