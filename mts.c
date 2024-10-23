@@ -32,32 +32,6 @@ int num_trains = 0;
 
 struct timespec start_time = { 0 };
 
-// train object
-struct train {
-    //TODO add in thread_id when creating threads
-    int train_no;
-    char priority[5];
-    char direction[5];
-    float loading_time;
-    float crossing_time;
-    char state[20]; //? what should the length of this be 
-    struct train* next;
-    //! DO WE EVEN NEED STATE? WHAT AM I GONNA USE THIS FOR???
-        // waiting -> loading -> ready -> granted -> crossing -> crossed
-};
-
-struct train* create_train(int train_no, const char* priority, const char* direction, float loading_time, float crossing_time, const char* state) {
-    struct train* new_train = (struct train*)malloc(sizeof(struct train));
-    new_train->train_no = train_no;
-    strcpy(new_train->priority, priority);
-    strcpy(new_train->direction, direction);
-    new_train->loading_time = loading_time;
-    new_train->crossing_time = crossing_time;
-    strcpy(new_train->state, state);
-    new_train->next = NULL;
-    return new_train;
-}
-
 // Convert timespec to seconds
 double timespec_to_seconds(struct timespec *ts) {
     return ((double) ts->tv_sec) + (((double) ts->tv_nsec) / NANOSECOND_CONVERSION);
@@ -86,20 +60,8 @@ void* train_thread_func(void *train) {
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
 
     printf("Start loading train %d at time %f (at simulation time %f) \n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
-    //TODO how to pass correct train object and load for that amount of time?
-    // sleep(train_object->loading_time);
-    // double seconds_part;
-    // double fractional_part = modf(train_object->loading_time, &seconds_part);
-    
-    // struct timespec loading_duration;
-    // loading_duration.tv_sec = (time_t) seconds_part;
-    // loading_duration.tv_nsec = (long) (fractional_part * NANOSECOND_CONVERSION);  // Convert fraction to nanoseconds
 
-    // // Simulate the train loading process using nanosleep()
-    // nanosleep(&loading_duration, NULL);
-
-    //? is this the best way to do the loading time?
-    usleep(train_object->loading_time * 1000000);
+    usleep(train_object->loading_time * 1000000); //? is this the best way to do the loading time?
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
     printf("train %d finished loading at time %f (at simulation time %f)\n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
     
@@ -139,36 +101,44 @@ int main() {
         return 1;
     }
     
-    struct train trains[5];
+    struct train** trains_array = NULL;
+    int trains_array_capacity = 10;
+    trains_array = malloc(trains_array_capacity * sizeof(struct train*));
     // int count = 0;
-    int num;
     char dir;
     float ltime;
     float ctime;
     // create the train objects and threads 
     while (fscanf(file, "%s %f %f", &dir, &ltime, &ctime) != EOF) {        
-        trains[num_trains].train_no = num_trains;
-        if (isupper(dir)) {
-            strcpy(trains[num_trains].priority, "high");
-        } else {
-            strcpy(trains[num_trains].priority, "low");
+        // dynamically allocate memory for the trains_array
+        if (num_trains >= trains_array_capacity) {
+            trains_array_capacity *= 2;
+            trains_array = realloc(trains_array, trains_array_capacity * sizeof(struct train*));
         }
-        if (tolower(dir) == 'e') {
-            strcpy(trains[num_trains].direction, "east");
+        // create train objects and put in trains_array
+        struct train* new_train = (struct train*)malloc(sizeof(struct train));
+        new_train->train_no = num_trains;
+         if (isupper(dir)) {
+            strcpy(new_train->priority, "high");
         } else {
-            strcpy(trains[num_trains].direction, "west");
+            strcpy(new_train->priority, "low");
         }
-        trains[num_trains].loading_time = ltime / 10;
-        trains[num_trains].crossing_time = ctime / 10;
-        strcpy(trains[num_trains].state, "waiting");
-        trains[num_trains].next = NULL;
+         if (tolower(dir) == 'e') {
+            strcpy(new_train->direction, "east");
+        } else {
+            strcpy(new_train->direction, "west");
+        }
+        new_train->loading_time = ltime/10;
+        new_train->crossing_time = ctime/10;
+        strcpy(new_train->state, "waiting");
+        new_train->next = NULL;
+
+        trains_array[num_trains] = new_train;
         num_trains++;
     }
 
     // trains 
     pthread_t train_thread_ids[num_trains];
-    //TODO could make an array of trains and instead of passing this i thing I can pass the train object at index i?
-    
 
     struct timespec initial_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &initial_time);
@@ -181,7 +151,7 @@ int main() {
         printf("Creating train %ld at time %f\n", i, timespec_to_seconds(&create_time));
         
         // create train thread 
-        if (pthread_create(&train_thread_ids[i], NULL, train_thread_func, (void *) &trains[i])) { // (void *) (intptr_t) i
+        if (pthread_create(&train_thread_ids[i], NULL, train_thread_func, (void *) trains_array[i])) { // (void *) (intptr_t) i
             printf("error creating train thread\n");
         }
         sleep(1); //? why do we need to simulate delay
@@ -194,8 +164,6 @@ int main() {
     }
     pthread_mutex_unlock(&ready_to_load_count_mutex);
 
-    
-
     // get start time 
     clock_gettime(CLOCK_MONOTONIC, &start_time);
     printf("program start time: %f\n", timespec_to_seconds(&start_time));
@@ -205,8 +173,10 @@ int main() {
 
     for(size_t i = 0; i < num_trains; ++i) {
         pthread_join(train_thread_ids[i], NULL);
+        free(trains_array[i]);
     }
 
+    free(trains_array);
     fclose(file);
     return 0;
 }
