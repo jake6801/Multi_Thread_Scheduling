@@ -25,6 +25,7 @@ Mutexes will be used to protect the access to shared resources like the station 
   The crossing mutex will be associated with the train crossing convar to ensure that when a train is signaled to cross, no other trains can access the main track concurrently 
 - What operation should be performed once pthread_cond_wait() has been unblocked and reacquired
   Once the train thread has been unblocked by the dispatchers signal and reacquires the crossing mutex, the train will cross the main track which is simulated by waiting the crossing time and then after crossing it will release the crossing mutex and signal back to the dispatcher that it has finished crossing 
+“The number of convars may not be enough. Each train might need a local convar. You need to make sure that the specific train thread will be signaled to start crossing.”
 
 8. in 15 lines or less, briefly sketch the overall algorithm you will use. 
 - Read input file, create train thread and object, train thread wait to load and set state to ready to load
