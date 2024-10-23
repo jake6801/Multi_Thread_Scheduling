@@ -9,18 +9,26 @@
 #include <unistd.h> //?
 #include <errno.h> //?
 #include <math.h>
+#include "mts.h"
 
 #define NANOSECOND_CONVERSION 1e9
 
-// mutexes 
+// mutex, convar and global variable for loading trains 
 //! need to change these a bit from loading_train.c
+bool ready_to_load = false; 
 pthread_mutex_t start_timer;
 pthread_cond_t train_ready_to_load;
-int num_trains = 0;
+// mutex, convar and global variables for determining when dispatcher should broadcast to trians to start loading 
 int ready_to_load_count = 0;
-bool ready_to_load = false; 
 pthread_mutex_t ready_to_load_count_mutex;
 pthread_cond_t all_ready_to_load;
+//TODO mutexes for addings to station queues 
+
+//TODO mutex for putting train on main track
+
+// global variables 
+int num_trains = 0;
+
 
 struct timespec start_time = { 0 };
 
@@ -33,8 +41,22 @@ struct train {
     float loading_time;
     float crossing_time;
     char state[20]; //? what should the length of this be 
+    struct train* next;
+    //! DO WE EVEN NEED STATE? WHAT AM I GONNA USE THIS FOR???
         // waiting -> loading -> ready -> granted -> crossing -> crossed
 };
+
+struct train* create_train(int train_no, const char* priority, const char* direction, float loading_time, float crossing_time, const char* state) {
+    struct train* new_train = (struct train*)malloc(sizeof(struct train));
+    new_train->train_no = train_no;
+    strcpy(new_train->priority, priority);
+    strcpy(new_train->direction, direction);
+    new_train->loading_time = loading_time;
+    new_train->crossing_time = crossing_time;
+    strcpy(new_train->state, state);
+    new_train->next = NULL;
+    return new_train;
+}
 
 // Convert timespec to seconds
 double timespec_to_seconds(struct timespec *ts) {
@@ -139,7 +161,7 @@ int main() {
         trains[num_trains].loading_time = ltime / 10;
         trains[num_trains].crossing_time = ctime / 10;
         strcpy(trains[num_trains].state, "waiting");
-
+        trains[num_trains].next = NULL;
         num_trains++;
     }
 
