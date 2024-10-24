@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <time.h>
+#include "priority_queue.h"
 
 // Constants
 #define NANOSECOND_CONVERSION 1e9
@@ -17,6 +18,8 @@ struct train {
     float crossing_time;
     char state[20]; 
     struct train* next;
+    pthread_cond_t main_track_available;
+    pthread_mutex_t main_track_mutex;
 };
 
 // Global variables
@@ -28,8 +31,20 @@ extern int ready_to_load_count;
 extern pthread_mutex_t ready_to_load_count_mutex;
 extern pthread_cond_t all_ready_to_load;
 
+extern int ready_to_cross_count;
+extern pthread_mutex_t ready_to_cross_count_mutex;
+extern pthread_cond_t train_available;
+
+extern priority_queue* eastbound_pq;
+extern pthread_mutex_t epq_access;
+extern priority_queue* westbound_pq;
+extern pthread_mutex_t wpq_access;
+
 extern int num_trains;
 extern struct timespec start_time;
+
+extern pthread_mutex_t main_track;
+extern pthread_cond_t track_free;
 
 // Function declarations
 double timespec_to_seconds(struct timespec *ts);

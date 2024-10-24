@@ -71,11 +71,11 @@ void* train_thread_func(void *train) {
     struct timespec load_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
 
-    printf("Start loading train %d at time %f (at simulation time %f) \n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
+    // printf("Start loading train %d at time %f (at simulation time %f) \n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
 
     usleep(train_object->loading_time * 1000000); //? is this the best way to do the loading time?
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
-    printf("Train %d finished loading at time %f (at simulation time %f)\n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
+    printf("Train %d is ready to go %s loading at time %f (at simulation time %f)\n", train_object->train_no, train_object->direction, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
     
     // *train_object->state = "loaded"; //! fix this?
 
@@ -177,13 +177,13 @@ int main() {
 
     struct timespec initial_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &initial_time);
-    printf("Program start time: %f\n", timespec_to_seconds(&initial_time));
+    // printf("Program start time: %f\n", timespec_to_seconds(&initial_time));
 
     struct timespec create_time = { 0 };
     // create the thread for each train object
     for (size_t i = 0; i < num_trains; ++i) { //? should this be ++i or i++?
         clock_gettime(CLOCK_MONOTONIC, &create_time);
-        printf("Creating train %ld at time %f\n", i, timespec_to_seconds(&create_time));
+        // printf("Creating train %ld at time %f\n", i, timespec_to_seconds(&create_time));
         
         // create train thread 
         if (pthread_create(&train_thread_ids[i], NULL, train_thread_func, (void *) trains_array[i])) { // (void *) (intptr_t) i
@@ -201,7 +201,7 @@ int main() {
 
     // get start time 
     clock_gettime(CLOCK_MONOTONIC, &start_time);
-    printf("program start time: %f\n", timespec_to_seconds(&start_time));
+    // printf("program start time: %f\n", timespec_to_seconds(&start_time));
 
     // start trains loading 
     start_trains();
@@ -294,6 +294,10 @@ int main() {
         pthread_cond_wait(&track_free, &main_track);
         // }
         pthread_mutex_unlock(&main_track);
+
+        // update last_train_direction
+        strcpy(last_train_direction, main_track_train->direction);
+
         remaining_trains--;
     }
 

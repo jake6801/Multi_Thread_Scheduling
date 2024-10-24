@@ -54,7 +54,7 @@ struct train* pop(priority_queue* pq) {
 
 struct train* peek(priority_queue* pq) {
     if (pq->head == NULL) {
-        printf("Priority queue is empty\n");
+        // printf("Priority queue is empty\n");
         return NULL;
     }
     return pq->head;

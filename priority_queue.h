@@ -12,6 +12,5 @@ void insert(priority_queue* pq, struct train* train);
 struct train* pop(priority_queue* pq);
 struct train* peek(priority_queue* pq);
 int is_empty(priority_queue* pq);
-void free(priority_queue* pq);
 
 #endif
