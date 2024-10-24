@@ -33,6 +33,11 @@ pthread_mutex_t epq_access;
 priority_queue* westbound_pq;
 pthread_mutex_t wpq_access;
 //TODO mutex for putting train on main track
+// bool train_crossing = false;
+pthread_mutex_t main_track;
+pthread_cond_t track_free;
+// pthread_mutex_t main_track_mutex;
+// pthread_cond_t main_track_available;
 
 // global variables 
 int num_trains = 0;
@@ -70,7 +75,7 @@ void* train_thread_func(void *train) {
 
     usleep(train_object->loading_time * 1000000); //? is this the best way to do the loading time?
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
-    printf("train %d finished loading at time %f (at simulation time %f)\n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
+    printf("Train %d finished loading at time %f (at simulation time %f)\n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
     
     // *train_object->state = "loaded"; //! fix this?
 
@@ -91,17 +96,24 @@ void* train_thread_func(void *train) {
     pthread_cond_broadcast(&train_available);
     pthread_mutex_unlock(&ready_to_cross_count_mutex);
     //TODO once received signal from dispatcher and mutex to cross, cross 
-    // ... mutex and convar stuff 
-    // struct timespec cross_time = { 0 };
-    // clock_gettime(CLOCK_MONOTONIC, &cross_time);
-    // *train_object->state = "crossing";
-    // usleep(train_object->crossing_time * 1000000);
-    // clock_gettime(CLOCK_MONOTONIC, &cross_time);
-
+    pthread_mutex_lock(&train_object->main_track_mutex);
+    // while (train_crossing) {
+    pthread_cond_wait(&train_object->main_track_available, &train_object->main_track_mutex);
+    // }
+    //TODO cross 
+    struct timespec cross_time = { 0 };
+    clock_gettime(CLOCK_MONOTONIC, &cross_time);
+    printf("Train %d is ON the main track going %s at time %f (at simulation time %f)\n", train_object->train_no, train_object->direction, timespec_to_seconds(&cross_time), timespec_to_seconds(&cross_time) - timespec_to_seconds(&start_time));
+    usleep(train_object->crossing_time * 1000000);
+    clock_gettime(CLOCK_MONOTONIC, &cross_time);
+    printf("Train %d is OFF the main tack after going %s at time %f (at simulation time %f)\n", train_object->train_no, train_object->direction, timespec_to_seconds(&cross_time), timespec_to_seconds(&cross_time) - timespec_to_seconds(&start_time));        
+    pthread_mutex_unlock(&train_object->main_track_mutex);
     //TODO signal back to dispatcher that train has crossed and exit
-    // ... signal back to dispatcher
-    // *train_object->state = "crossed";
-    // pthread_exit(NULL);
+    pthread_mutex_lock(&main_track);
+    pthread_cond_signal(&track_free);
+    pthread_mutex_unlock(&main_track);
+
+    pthread_exit(NULL);
 }
 
 // broadcast to start loading trains 
@@ -231,9 +243,13 @@ int main() {
         // handle starvation condition 
         else if (back_to_back_count > 0) {
             if (strcmp(last_train_direction, "west") == 0) {
-                //TODO send eastbound if any 
+                pthread_mutex_lock(&epq_access);
+                main_track_train = pop(eastbound_pq);
+                pthread_mutex_unlock(&epq_access);
             } else {
-                //TODO send westbound if any
+                pthread_mutex_lock(&wpq_access);
+                main_track_train = pop(westbound_pq);
+                pthread_mutex_unlock(&wpq_access);
             }
         }
         // same priority
@@ -267,10 +283,17 @@ int main() {
         } else {
             back_to_back_count = 0;
         }
-        //TODO signal the main track train to cross 
-        
-        // wait until receiving signal that it is finished crossing
+        //TODO signal the main track train to cross             
+        pthread_mutex_lock(&main_track_train->main_track_mutex);
+        pthread_cond_signal(&main_track_train->main_track_available);
+        pthread_mutex_unlock(&main_track_train->main_track_mutex);
 
+        //TODO wait until receiving signal that it is finished crossing
+        pthread_mutex_lock(&main_track);
+        // while(train_crossing) {
+        pthread_cond_wait(&track_free, &main_track);
+        // }
+        pthread_mutex_unlock(&main_track);
         remaining_trains--;
     }
 
