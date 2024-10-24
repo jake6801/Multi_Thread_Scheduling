@@ -10,6 +10,7 @@
 #include <errno.h> //?
 #include <math.h>
 #include "mts.h"
+#include "priority_queue.h"
 
 #define NANOSECOND_CONVERSION 1e9
 
@@ -18,17 +19,23 @@
 bool ready_to_load = false; 
 pthread_mutex_t start_timer;
 pthread_cond_t train_ready_to_load;
-// mutex, convar and global variables for determining when dispatcher should broadcast to trians to start loading 
+// mutex, convar and global variable for determining when dispatcher should broadcast to trians to start loading 
 int ready_to_load_count = 0;
 pthread_mutex_t ready_to_load_count_mutex;
 pthread_cond_t all_ready_to_load;
-//TODO mutexes for addings to station queues 
-
+// mutex, convar and global variable for dispatcher to know when to start scheduling and avoid busy waiting 
+int ready_to_cross_count = 0;
+pthread_mutex_t ready_to_cross_count_mutex;
+pthread_cond_t train_available; 
+//TODO create station queues and associated mutexes
+priority_queue* eastbound_pq;
+pthread_mutex_t epq_access;
+priority_queue* westbound_pq;
+pthread_mutex_t wpq_access;
 //TODO mutex for putting train on main track
 
 // global variables 
 int num_trains = 0;
-
 
 struct timespec start_time = { 0 };
 
@@ -68,9 +75,21 @@ void* train_thread_func(void *train) {
     // *train_object->state = "loaded"; //! fix this?
 
     //TODO create priority queue and put train in queue (need to do mutex stuff)
-    // *train_object->state = "ready";    
+    // *train_object->state = "ready";   
+    if (strcmp(train_object->direction, "east") == 0) {
+        pthread_mutex_lock(&epq_access);
+        insert(eastbound_pq, train_object);
+        pthread_mutex_unlock(&epq_access); 
+    } else {
+        pthread_mutex_lock(&wpq_access);
+        insert(westbound_pq, train_object);
+        pthread_mutex_unlock(&wpq_access);
+    }
     //TODO signal to dispatcher that trains are ready? (need to do local convar stuff?)
-
+    pthread_mutex_lock(&ready_to_cross_count_mutex);
+    ready_to_cross_count++;
+    pthread_cond_broadcast(&train_available);
+    pthread_mutex_unlock(&ready_to_cross_count_mutex);
     //TODO once received signal from dispatcher and mutex to cross, cross 
     // ... mutex and convar stuff 
     // struct timespec cross_time = { 0 };
@@ -136,9 +155,13 @@ int main() {
         trains_array[num_trains] = new_train;
         num_trains++;
     }
+    fclose(file);
 
     // trains 
     pthread_t train_thread_ids[num_trains];
+    // priority queues representing stations 
+    eastbound_pq = create_pq();
+    westbound_pq = create_pq();
 
     struct timespec initial_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &initial_time);
@@ -171,12 +194,93 @@ int main() {
     // start trains loading 
     start_trains();
 
+    // now wait for signal back from trains that the queues arent empty and do the loop?
+    int remaining_trains = num_trains;
+    char last_train_direction[5] = "None";
+    int back_to_back_count = 0;
+    struct train* main_track_train;
+    while (remaining_trains > 0) {
+        // check/wait for ready trains 
+        pthread_mutex_lock(&ready_to_cross_count_mutex);
+        while(ready_to_cross_count == 0) {            
+            pthread_cond_wait(&train_available, &ready_to_cross_count_mutex);
+        }        
+        pthread_mutex_unlock(&ready_to_cross_count_mutex);
+
+        // choose/signal next train to cross 
+            // peek at top of both queues, if ones empty then signal the other, if neither empty see which has higher priority, if same priority ...
+        pthread_mutex_lock(&wpq_access);
+        struct train* top_west_pq = peek(westbound_pq);
+        pthread_mutex_unlock(&wpq_access);
+        pthread_mutex_lock(&epq_access);
+        struct train* top_east_pq = peek(eastbound_pq);      
+        pthread_mutex_unlock(&epq_access);
+        
+        // if westbound station is empty, send eastbound available train
+        if (top_west_pq == NULL) {
+            pthread_mutex_lock(&epq_access);
+            main_track_train = pop(eastbound_pq);
+            pthread_mutex_unlock(&epq_access);
+        } 
+        // if eastbound station is empty, send westbound available train
+        else if (top_east_pq == NULL) {
+            pthread_mutex_lock(&wpq_access);
+            main_track_train = pop(westbound_pq);
+            pthread_mutex_unlock(&wpq_access);
+        }    
+        // handle starvation condition 
+        else if (back_to_back_count > 0) {
+            if (strcmp(last_train_direction, "west") == 0) {
+                //TODO send eastbound if any 
+            } else {
+                //TODO send westbound if any
+            }
+        }
+        // same priority
+        else if (strcmp(top_east_pq->priority, top_west_pq->priority) == 0) {            
+            // opposite direction 
+            if (strcmp(last_train_direction, "None") == 0 || strcmp(last_train_direction, "east") == 0) { // none have crossed yet or the last was eastbound so westbound gets priority
+                pthread_mutex_lock(&wpq_access);
+                main_track_train = pop(westbound_pq);
+                pthread_mutex_unlock(&wpq_access);
+            } else { // last was westbound so eastbound gets priority 
+                pthread_mutex_lock(&epq_access);
+                main_track_train = pop(eastbound_pq);
+                pthread_mutex_unlock(&epq_access);
+            }
+        }  
+        // west is higher priority
+        else if (strcmp(top_east_pq->priority, top_west_pq->priority) > 0) {
+            pthread_mutex_lock(&wpq_access);
+            main_track_train = pop(westbound_pq);
+            pthread_mutex_unlock(&wpq_access);            
+        }
+        // east is higher priority
+        else {
+            pthread_mutex_lock(&epq_access);
+            main_track_train = pop(eastbound_pq);
+            pthread_mutex_unlock(&epq_access);            
+        }
+        // update back to back count 
+        if (strcmp(last_train_direction, main_track_train->direction) == 0) {
+            back_to_back_count++;
+        } else {
+            back_to_back_count = 0;
+        }
+        //TODO signal the main track train to cross 
+        
+        // wait until receiving signal that it is finished crossing
+
+        remaining_trains--;
+    }
+
+
+
     for(size_t i = 0; i < num_trains; ++i) {
         pthread_join(train_thread_ids[i], NULL);
         free(trains_array[i]);
     }
 
     free(trains_array);
-    fclose(file);
     return 0;
 }
