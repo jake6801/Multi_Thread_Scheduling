@@ -59,7 +59,6 @@ char* format_output_time(double sim_seconds) {
 
 // thread function 
 void* train_thread_func(void *train) {
-    // size_t i = (intptr_t) t;
     struct train *train_object = (struct train *) train;
 
     pthread_mutex_lock(&ready_to_load_count_mutex);
@@ -79,8 +78,6 @@ void* train_thread_func(void *train) {
     struct timespec load_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
 
-    // printf("Start loading train %d at time %f (at simulation time %f) \n", train_object->train_no, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
-
     usleep(train_object->loading_time * 1000000); //? is this the best way to do the loading time?
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
     char* formatted_time = format_output_time(timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
@@ -89,7 +86,7 @@ void* train_thread_func(void *train) {
 
     free(formatted_time);
 
-    //TODO create priority queue and put train in queue (need to do mutex stuff)
+    // insert train into corresponding station queue 
     if (strcmp(train_object->direction, "East") == 0) {
         pthread_mutex_lock(&epq_access);
         insert(eastbound_pq, train_object);
@@ -99,17 +96,17 @@ void* train_thread_func(void *train) {
         insert(westbound_pq, train_object);
         pthread_mutex_unlock(&wpq_access);
     }
-    //TODO signal to dispatcher that trains are ready? (need to do local convar stuff?)
+    // signal to dispatcher that train is ready
     pthread_mutex_lock(&ready_to_cross_count_mutex);
     ready_to_cross_count++;
-    pthread_cond_broadcast(&train_available);
+    pthread_cond_signal(&train_available);
     pthread_mutex_unlock(&ready_to_cross_count_mutex);
-    //TODO once received signal from dispatcher and mutex to cross, cross 
+    
+    // after receiving signal from dispatcher and mutex to cross, cross 
     pthread_mutex_lock(&train_object->main_track_mutex);
-    // while (train_crossing) {
     pthread_cond_wait(&train_object->main_track_available, &train_object->main_track_mutex);
-    // }
-    //TODO cross 
+    
+    // cross and write to output file 
     struct timespec cross_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &cross_time);
     formatted_time = format_output_time(timespec_to_seconds(&cross_time) - timespec_to_seconds(&start_time));
@@ -123,7 +120,8 @@ void* train_thread_func(void *train) {
     fprintf(output_file, "%s Train %2d is OFF the main tack after going %4s\n", formatted_time, train_object->train_no, train_object->direction);   
     free(formatted_time);
     pthread_mutex_unlock(&train_object->main_track_mutex);
-    //TODO signal back to dispatcher that train has crossed and exit
+
+    // signal back to dispatcher that train has crossed 
     pthread_mutex_lock(&main_track);
     pthread_cond_signal(&track_free);
     pthread_mutex_unlock(&main_track);
@@ -149,7 +147,6 @@ int main(int argc, char *argv[]) {
     struct train** trains_array = NULL;
     int trains_array_capacity = 10;
     trains_array = malloc(trains_array_capacity * sizeof(struct train*));
-    // int count = 0;
     char dir;
     float ltime;
     float ctime;
@@ -193,19 +190,16 @@ int main(int argc, char *argv[]) {
 
     struct timespec initial_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &initial_time);
-    // printf("Program start time: %f\n", timespec_to_seconds(&initial_time));
 
     struct timespec create_time = { 0 };
     // create the thread for each train object
     for (size_t i = 0; i < num_trains; ++i) { //? should this be ++i or i++?
         clock_gettime(CLOCK_MONOTONIC, &create_time);
-        // printf("Creating train %ld at time %f\n", i, timespec_to_seconds(&create_time));
         
         // create train thread 
         if (pthread_create(&train_thread_ids[i], NULL, train_thread_func, (void *) trains_array[i])) { // (void *) (intptr_t) i
             printf("error creating train thread\n");
         }
-        sleep(1); //? why do we need to simulate delay
     }    
 
     // use convar and mutex to wait for all trains to be ready to load 
@@ -217,12 +211,10 @@ int main(int argc, char *argv[]) {
 
     // get start time 
     clock_gettime(CLOCK_MONOTONIC, &start_time);
-    // printf("program start time: %f\n", timespec_to_seconds(&start_time));
 
     // start trains loading 
     start_trains();
 
-    // now wait for signal back from trains that the queues arent empty and do the loop?
     int remaining_trains = num_trains;
     char last_train_direction[5] = "None";
     int back_to_back_count = 0;
@@ -236,7 +228,6 @@ int main(int argc, char *argv[]) {
         pthread_mutex_unlock(&ready_to_cross_count_mutex);
 
         // choose/signal next train to cross 
-            // peek at top of both queues, if ones empty then signal the other, if neither empty see which has higher priority, if same priority ...
         pthread_mutex_lock(&wpq_access);
         struct train* top_west_pq = peek(westbound_pq);
         pthread_mutex_unlock(&wpq_access);
@@ -299,16 +290,14 @@ int main(int argc, char *argv[]) {
         } else {
             back_to_back_count = 0;
         }
-        //TODO signal the main track train to cross             
+        // signal the main track train to cross             
         pthread_mutex_lock(&main_track_train->main_track_mutex);
         pthread_cond_signal(&main_track_train->main_track_available);
         pthread_mutex_unlock(&main_track_train->main_track_mutex);
 
-        //TODO wait until receiving signal that it is finished crossing
+        // wait until receiving signal that it is finished crossing
         pthread_mutex_lock(&main_track);
-        // while(train_crossing) {
         pthread_cond_wait(&track_free, &main_track);
-        // }
         pthread_mutex_unlock(&main_track);
 
         // update last_train_direction
