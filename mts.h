@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <time.h>
 #include "priority_queue.h"
 
@@ -16,7 +17,6 @@ struct train {
     char direction[5];
     float loading_time;
     float crossing_time;
-    char state[20]; 
     struct train* next;
     pthread_cond_t main_track_available;
     pthread_mutex_t main_track_mutex;

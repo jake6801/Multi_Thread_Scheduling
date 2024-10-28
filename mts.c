@@ -76,10 +76,10 @@ void* train_thread_func(void *train) {
     pthread_mutex_unlock(&start_timer);
 
     struct timespec load_time = { 0 };
-    clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
+    clock_gettime(CLOCK_MONOTONIC, &load_time); 
 
-    usleep(train_object->loading_time * 1000000); //? is this the best way to do the loading time?
-    clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
+    usleep(train_object->loading_time * 1000000); 
+    clock_gettime(CLOCK_MONOTONIC, &load_time); 
     char* formatted_time = format_output_time(timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
     printf("%s Train %2d is ready to go %4s\n", formatted_time, train_object->train_no, train_object->direction);
     fprintf(output_file, "%s Train %2d is ready to go %4s\n", formatted_time, train_object->train_no, train_object->direction);
@@ -193,7 +193,7 @@ int main(int argc, char *argv[]) {
 
     struct timespec create_time = { 0 };
     // create the thread for each train object
-    for (size_t i = 0; i < num_trains; ++i) { //? should this be ++i or i++?
+    for (size_t i = 0; i < num_trains; ++i) { 
         clock_gettime(CLOCK_MONOTONIC, &create_time);
         
         // create train thread 
