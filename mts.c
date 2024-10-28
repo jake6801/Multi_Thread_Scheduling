@@ -6,9 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
-#include <unistd.h> //?
-#include <errno.h> //?
-#include <math.h>
+#include <unistd.h> 
 #include "mts.h"
 #include "priority_queue.h"
 
@@ -27,26 +25,36 @@ pthread_cond_t all_ready_to_load;
 int ready_to_cross_count = 0;
 pthread_mutex_t ready_to_cross_count_mutex;
 pthread_cond_t train_available; 
-//TODO create station queues and associated mutexes
+// station queues and associated mutexes
 priority_queue* eastbound_pq;
 pthread_mutex_t epq_access;
 priority_queue* westbound_pq;
 pthread_mutex_t wpq_access;
-//TODO mutex for putting train on main track
-// bool train_crossing = false;
+// mutex for putting train on main track
 pthread_mutex_t main_track;
 pthread_cond_t track_free;
-// pthread_mutex_t main_track_mutex;
-// pthread_cond_t main_track_available;
-
 // global variables 
 int num_trains = 0;
+
+// initialize output file pointer globally to be used by all threads 
+FILE *output_file;
 
 struct timespec start_time = { 0 };
 
 // Convert timespec to seconds
 double timespec_to_seconds(struct timespec *ts) {
     return ((double) ts->tv_sec) + (((double) ts->tv_nsec) / NANOSECOND_CONVERSION);
+}
+
+// format output time 
+char* format_output_time(double sim_seconds) {
+    char* formatted_time = malloc(12);
+    int hours = (int)(sim_seconds / 3600);
+    int minutes = (int)((sim_seconds - (hours * 3600)) / 60);
+    int seconds = (int)((sim_seconds - (hours * 3600) - (minutes * 60)));
+    int tenths_of_seconds = (int)((sim_seconds - (int)(sim_seconds)) * 10);
+    snprintf(formatted_time, 12, "%02d:%02d:%02d.%d", hours, minutes, seconds, tenths_of_seconds);
+    return formatted_time;
 }
 
 // thread function 
@@ -75,13 +83,14 @@ void* train_thread_func(void *train) {
 
     usleep(train_object->loading_time * 1000000); //? is this the best way to do the loading time?
     clock_gettime(CLOCK_MONOTONIC, &load_time); //! whats wrong with CLOCK_MONOTONIC but its in the sample code? 
-    printf("Train %d is ready to go %s loading at time %f (at simulation time %f)\n", train_object->train_no, train_object->direction, timespec_to_seconds(&load_time), timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
-    
-    // *train_object->state = "loaded"; //! fix this?
+    char* formatted_time = format_output_time(timespec_to_seconds(&load_time) - timespec_to_seconds(&start_time));
+    printf("%s Train %2d is ready to go %4s\n", formatted_time, train_object->train_no, train_object->direction);
+    fprintf(output_file, "%s Train %2d is ready to go %4s\n", formatted_time, train_object->train_no, train_object->direction);
+
+    free(formatted_time);
 
     //TODO create priority queue and put train in queue (need to do mutex stuff)
-    // *train_object->state = "ready";   
-    if (strcmp(train_object->direction, "east") == 0) {
+    if (strcmp(train_object->direction, "East") == 0) {
         pthread_mutex_lock(&epq_access);
         insert(eastbound_pq, train_object);
         pthread_mutex_unlock(&epq_access); 
@@ -103,10 +112,16 @@ void* train_thread_func(void *train) {
     //TODO cross 
     struct timespec cross_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &cross_time);
-    printf("Train %d is ON the main track going %s at time %f (at simulation time %f)\n", train_object->train_no, train_object->direction, timespec_to_seconds(&cross_time), timespec_to_seconds(&cross_time) - timespec_to_seconds(&start_time));
+    formatted_time = format_output_time(timespec_to_seconds(&cross_time) - timespec_to_seconds(&start_time));
+    printf("%s Train %2d is ON the main track going %4s\n", formatted_time, train_object->train_no, train_object->direction);
+    fprintf(output_file, "%s Train %2d is ON the main track going %4s\n", formatted_time, train_object->train_no, train_object->direction);
+    free(formatted_time);
     usleep(train_object->crossing_time * 1000000);
     clock_gettime(CLOCK_MONOTONIC, &cross_time);
-    printf("Train %d is OFF the main tack after going %s at time %f (at simulation time %f)\n", train_object->train_no, train_object->direction, timespec_to_seconds(&cross_time), timespec_to_seconds(&cross_time) - timespec_to_seconds(&start_time));        
+    formatted_time = format_output_time(timespec_to_seconds(&cross_time) - timespec_to_seconds(&start_time));
+    printf("%s Train %2d is OFF the main tack after going %4s\n", formatted_time, train_object->train_no, train_object->direction);    
+    fprintf(output_file, "%s Train %2d is OFF the main tack after going %4s\n", formatted_time, train_object->train_no, train_object->direction);   
+    free(formatted_time);
     pthread_mutex_unlock(&train_object->main_track_mutex);
     //TODO signal back to dispatcher that train has crossed and exit
     pthread_mutex_lock(&main_track);
@@ -124,10 +139,9 @@ void start_trains() {
     pthread_mutex_unlock(&start_timer);
 } 
 
-
-int main() { 
-    FILE *file = fopen("input.txt", "r");
-    if (file == NULL) {
+int main(int argc, char *argv[]) { 
+    FILE *input_file = fopen(argv[1], "r");
+    if (input_file == NULL) {
         printf("Could not open file.\n");
         return 1;
     }
@@ -140,7 +154,7 @@ int main() {
     float ltime;
     float ctime;
     // create the train objects and threads 
-    while (fscanf(file, "%s %f %f", &dir, &ltime, &ctime) != EOF) {        
+    while (fscanf(input_file, "%s %f %f", &dir, &ltime, &ctime) != EOF) {        
         // dynamically allocate memory for the trains_array
         if (num_trains >= trains_array_capacity) {
             trains_array_capacity *= 2;
@@ -155,19 +169,21 @@ int main() {
             strcpy(new_train->priority, "low");
         }
          if (tolower(dir) == 'e') {
-            strcpy(new_train->direction, "east");
+            strcpy(new_train->direction, "East");
         } else {
-            strcpy(new_train->direction, "west");
+            strcpy(new_train->direction, "West");
         }
         new_train->loading_time = ltime/10;
         new_train->crossing_time = ctime/10;
-        strcpy(new_train->state, "waiting");
         new_train->next = NULL;
 
         trains_array[num_trains] = new_train;
         num_trains++;
     }
-    fclose(file);
+    fclose(input_file);
+
+    // open the output file to be written to 
+    output_file = fopen("output.txt", "w");
 
     // trains 
     pthread_t train_thread_ids[num_trains];
@@ -242,7 +258,7 @@ int main() {
         }    
         // handle starvation condition 
         else if (back_to_back_count > 0) {
-            if (strcmp(last_train_direction, "west") == 0) {
+            if (strcmp(last_train_direction, "West") == 0) {
                 pthread_mutex_lock(&epq_access);
                 main_track_train = pop(eastbound_pq);
                 pthread_mutex_unlock(&epq_access);
@@ -255,7 +271,7 @@ int main() {
         // same priority
         else if (strcmp(top_east_pq->priority, top_west_pq->priority) == 0) {            
             // opposite direction 
-            if (strcmp(last_train_direction, "None") == 0 || strcmp(last_train_direction, "east") == 0) { // none have crossed yet or the last was eastbound so westbound gets priority
+            if (strcmp(last_train_direction, "None") == 0 || strcmp(last_train_direction, "East") == 0) { // none have crossed yet or the last was eastbound so westbound gets priority
                 pthread_mutex_lock(&wpq_access);
                 main_track_train = pop(westbound_pq);
                 pthread_mutex_unlock(&wpq_access);
@@ -301,7 +317,7 @@ int main() {
         remaining_trains--;
     }
 
-
+    fclose(output_file);
 
     for(size_t i = 0; i < num_trains; ++i) {
         pthread_join(train_thread_ids[i], NULL);
