@@ -41,6 +41,7 @@ extern priority_queue* westbound_pq;
 extern pthread_mutex_t wpq_access;
 
 extern int num_trains;
+extern FILE *output_file;
 extern struct timespec start_time;
 
 extern pthread_mutex_t main_track;
@@ -48,6 +49,7 @@ extern pthread_cond_t track_free;
 
 // Function declarations
 double timespec_to_seconds(struct timespec *ts);
+char* format_output_time(double sim_seconds);
 void* train_thread_func(void *train);
 void start_trains();
 

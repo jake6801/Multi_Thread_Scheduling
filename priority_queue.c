@@ -63,5 +63,3 @@ struct train* peek(priority_queue* pq) {
 int is_empty(priority_queue* pq) {
     return pq->head == NULL;
 }
-
-//? DO I NEED ONE TO FREE THE QUEUE?
