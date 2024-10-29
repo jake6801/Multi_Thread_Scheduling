@@ -13,7 +13,6 @@
 #define NANOSECOND_CONVERSION 1e9
 
 // mutex, convar and global variable for loading trains 
-//! need to change these a bit from loading_train.c
 bool ready_to_load = false; 
 pthread_mutex_t start_timer;
 pthread_cond_t train_ready_to_load;
@@ -59,8 +58,10 @@ char* format_output_time(double sim_seconds) {
 
 // thread function 
 void* train_thread_func(void *train) {
+    // assign associated train object to thread 
     struct train *train_object = (struct train *) train;
 
+    // increment ready to load counter and signal back to dispatcher if this is the last train to be ready 
     pthread_mutex_lock(&ready_to_load_count_mutex);
     ready_to_load_count++;
     if (ready_to_load_count == num_trains) {
@@ -75,6 +76,7 @@ void* train_thread_func(void *train) {
     }    
     pthread_mutex_unlock(&start_timer);
 
+    // load train 
     struct timespec load_time = { 0 };
     clock_gettime(CLOCK_MONOTONIC, &load_time); 
 
@@ -116,8 +118,8 @@ void* train_thread_func(void *train) {
     usleep(train_object->crossing_time * 1000000);
     clock_gettime(CLOCK_MONOTONIC, &cross_time);
     formatted_time = format_output_time(timespec_to_seconds(&cross_time) - timespec_to_seconds(&start_time));
-    printf("%s Train %2d is OFF the main tack after going %4s\n", formatted_time, train_object->train_no, train_object->direction);    
-    fprintf(output_file, "%s Train %2d is OFF the main tack after going %4s\n", formatted_time, train_object->train_no, train_object->direction);   
+    printf("%s Train %2d is OFF the main track after going %4s\n", formatted_time, train_object->train_no, train_object->direction);    
+    fprintf(output_file, "%s Train %2d is OFF the main track after going %4s\n", formatted_time, train_object->train_no, train_object->direction);   
     free(formatted_time);
     pthread_mutex_unlock(&train_object->main_track_mutex);
 
@@ -142,8 +144,7 @@ int main(int argc, char *argv[]) {
     if (input_file == NULL) {
         printf("Could not open file.\n");
         return 1;
-    }
-    
+    }    
     struct train** trains_array = NULL;
     int trains_array_capacity = 10;
     trains_array = malloc(trains_array_capacity * sizeof(struct train*));
@@ -173,7 +174,6 @@ int main(int argc, char *argv[]) {
         new_train->loading_time = ltime/10;
         new_train->crossing_time = ctime/10;
         new_train->next = NULL;
-
         trains_array[num_trains] = new_train;
         num_trains++;
     }
@@ -188,16 +188,9 @@ int main(int argc, char *argv[]) {
     eastbound_pq = create_pq();
     westbound_pq = create_pq();
 
-    struct timespec initial_time = { 0 };
-    clock_gettime(CLOCK_MONOTONIC, &initial_time);
-
-    struct timespec create_time = { 0 };
     // create the thread for each train object
     for (size_t i = 0; i < num_trains; ++i) { 
-        clock_gettime(CLOCK_MONOTONIC, &create_time);
-        
-        // create train thread 
-        if (pthread_create(&train_thread_ids[i], NULL, train_thread_func, (void *) trains_array[i])) { // (void *) (intptr_t) i
+        if (pthread_create(&train_thread_ids[i], NULL, train_thread_func, (void *) trains_array[i])) { 
             printf("error creating train thread\n");
         }
     }    

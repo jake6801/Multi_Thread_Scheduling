@@ -6,3 +6,4 @@ I have implemented mts correctly according to the P2 spec.
 - mts has no deadlock or livelock so the simulation can complete within 1 minute 
 - mts follows all rules of priority and scheduling to ensure trains cross in the correct order 
 - mts uses threads to complete this train scheduling and ensures synchronization using mutexes and conditional variables 
+- from the provided input.txt file the estimated run time is 1.3 seconds to execute
