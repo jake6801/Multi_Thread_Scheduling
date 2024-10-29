@@ -44,7 +44,6 @@ void insert(priority_queue* pq, struct train* train) {
 
 struct train* pop(priority_queue* pq) {
     if (pq->head == NULL) {
-        printf("Priority queue is empty\n");
         return NULL;
     }
     struct train* highest_priority_train = pq->head;
@@ -54,7 +53,6 @@ struct train* pop(priority_queue* pq) {
 
 struct train* peek(priority_queue* pq) {
     if (pq->head == NULL) {
-        // printf("Priority queue is empty\n");
         return NULL;
     }
     return pq->head;
