@@ -140,6 +140,9 @@ void start_trains() {
 } 
 
 int main(int argc, char *argv[]) { 
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     FILE *input_file = fopen(argv[1], "r");
     if (input_file == NULL) {
         printf("Could not open file.\n");
@@ -307,5 +310,10 @@ int main(int argc, char *argv[]) {
     }
 
     free(trains_array);
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double time_taken = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+	printf("Program execution time: %f seconds\n", time_taken);
+
     return 0;
 }
